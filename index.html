@@ -1,0 +1,1867 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<title>PACKET — the social network with the abstractions removed</title>
+
+<style>
+/* ============================================================
+   PACKET — instrument-console identity
+   color encodes packet direction (TX amber / RX cyan) and TCP
+   state (green established / red reset). mono is the voice of
+   the machine; serif is the voice of the humans trapped in it.
+   ============================================================ */
+
+:root {
+  --ground:  #0B1014;
+  --panel:   #121A20;
+  --panel-2: #0E161B;
+  --rule:    #22303A;
+  --rule-2:  #1A252C;
+  --text:    #C7D5DE;
+  --muted:   #67808F;
+  --dim:     #3E525E;
+  --tx:      #E9A23B;
+  --rx:      #48C2D8;
+  --ok:      #57C98B;
+  --err:     #E0574B;
+  --sel:     #1E3A44;
+
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --human: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 36px;
+  --shadow: 0 18px 50px -18px rgba(0,0,0,.75);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --ground:  #E9EDEF;
+    --panel:   #FFFFFF;
+    --panel-2: #F5F8F9;
+    --rule:    #CBD6DB;
+    --rule-2:  #E1E8EB;
+    --text:    #13202A;
+    --muted:   #5B7180;
+    --dim:     #92A5B0;
+    --tx:      #96600F;
+    --rx:      #0C6A79;
+    --ok:      #1C7A4B;
+    --err:     #AF3327;
+    --sel:     #D3E7EC;
+    --shadow: 0 18px 50px -22px rgba(19,32,42,.28);
+  }
+}
+
+:root[data-theme="light"] {
+  --ground:  #E9EDEF;
+  --panel:   #FFFFFF;
+  --panel-2: #F5F8F9;
+  --rule:    #CBD6DB;
+  --rule-2:  #E1E8EB;
+  --text:    #13202A;
+  --muted:   #5B7180;
+  --dim:     #92A5B0;
+  --tx:      #96600F;
+  --rx:      #0C6A79;
+  --ok:      #1C7A4B;
+  --err:     #AF3327;
+  --sel:     #D3E7EC;
+  --shadow: 0 18px 50px -22px rgba(19,32,42,.28);
+}
+
+:root[data-theme="dark"] {
+  --ground:  #0B1014;
+  --panel:   #121A20;
+  --panel-2: #0E161B;
+  --rule:    #22303A;
+  --rule-2:  #1A252C;
+  --text:    #C7D5DE;
+  --muted:   #67808F;
+  --dim:     #3E525E;
+  --tx:      #E9A23B;
+  --rx:      #48C2D8;
+  --ok:      #57C98B;
+  --err:     #E0574B;
+  --sel:     #1E3A44;
+  --shadow: 0 18px 50px -18px rgba(0,0,0,.75);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+::selection { background: var(--sel); }
+
+:focus-visible {
+  outline: 2px solid var(--tx);
+  outline-offset: 2px;
+}
+
+/* ---------- app shell ---------- */
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100dvh;
+  min-height: 0;
+}
+
+/* ---------- status rail ---------- */
+
+.rail {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border-bottom: 1px solid var(--rule);
+  background: var(--panel);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.rail::-webkit-scrollbar { display: none; }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s4);
+  border-right: 1px solid var(--rule);
+  flex: 0 0 auto;
+}
+.brand b {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .34em;
+  margin-right: -.34em;
+}
+.brand span {
+  color: var(--dim);
+  font-size: 9px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  border: 1px solid var(--rule);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+.gauge {
+  flex: 0 0 auto;
+  padding: var(--s2) var(--s4);
+  border-right: 1px solid var(--rule-2);
+  min-width: 96px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0;
+}
+.gauge dt {
+  font-size: 9px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.gauge dd {
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.gauge dd.off { color: var(--muted); }
+.gauge dd.on  { color: var(--ok); }
+.gauge dd.bad { color: var(--err); }
+.gauge dd.warn { color: var(--tx); }
+
+.rail-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s3);
+  flex: 0 0 auto;
+  border-left: 1px solid var(--rule-2);
+}
+
+.led {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--dim);
+  flex: 0 0 auto;
+}
+.led.live { background: var(--ok); box-shadow: 0 0 7px var(--ok); }
+.led.dead { background: var(--err); }
+
+button.chip {
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--rule);
+  padding: 3px 8px;
+  cursor: pointer;
+}
+button.chip:hover { color: var(--text); border-color: var(--muted); }
+
+/* ---------- main split ---------- */
+
+.main {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 300px;
+  min-height: 0;
+}
+.main.solo { grid-template-columns: minmax(0,1fr); }
+
+/* ---------- console ---------- */
+
+.console {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  background: var(--ground);
+}
+
+.scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--s4) var(--s5) var(--s3);
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule) transparent;
+}
+.scroll::-webkit-scrollbar { width: 10px; }
+.scroll::-webkit-scrollbar-thumb { background: var(--rule); }
+
+.line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+.line.tx   { color: var(--tx); }
+.line.rx   { color: var(--rx); }
+.line.sys  { color: var(--muted); }
+.line.ok   { color: var(--ok); }
+.line.err  { color: var(--err); }
+.line.pad  { height: var(--s3); }
+
+.line.tx::before,
+.line.rx::before {
+  content: attr(data-dir);
+  color: var(--dim);
+  margin-right: var(--s2);
+}
+
+.hexwrap {
+  overflow-x: auto;
+  border-left: 2px solid var(--rule);
+  padding: var(--s2) 0 var(--s2) var(--s3);
+  margin: var(--s2) 0;
+  scrollbar-width: thin;
+}
+.hex {
+  white-space: pre;
+  font-size: 12px;
+  color: var(--rx);
+  margin: 0;
+}
+.hex .off { color: var(--dim); }
+.hex .asc { color: var(--text); }
+
+/* human content — the only serif on the page */
+.post {
+  border-left: 2px solid var(--rule);
+  padding: var(--s2) 0 var(--s2) var(--s3);
+  margin: var(--s3) 0;
+}
+.post .meta {
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  font-variant-numeric: tabular-nums;
+}
+.post .meta b { color: var(--rx); font-weight: 400; }
+.post .body {
+  font-family: var(--human);
+  font-size: 16px;
+  line-height: 1.5;
+  margin-top: var(--s1);
+  max-width: 62ch;
+}
+.post .tally { color: var(--dim); font-size: 11px; margin-top: var(--s1); }
+
+/* ---------- prompt ---------- */
+
+.promptbar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  border-top: 1px solid var(--rule);
+  background: var(--panel);
+  padding: var(--s3) var(--s5);
+}
+.promptbar label { color: var(--tx); flex: 0 0 auto; white-space: nowrap; }
+.promptbar input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  caret-color: var(--tx);
+}
+.promptbar input:focus { outline: none; }
+.promptbar input::placeholder { color: var(--dim); }
+.promptbar .hint {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  flex: 0 0 auto;
+}
+
+/* ---------- right rail ---------- */
+
+.stack {
+  border-left: 1px solid var(--rule);
+  background: var(--panel);
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+.stack section { border-bottom: 1px solid var(--rule-2); padding: var(--s3) var(--s4); }
+.stack h2 {
+  font-size: 9px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 0 0 var(--s2);
+  font-weight: 400;
+}
+
+.layer {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: var(--s2);
+  font-size: 11px;
+  padding: 1px 0;
+  color: var(--dim);
+}
+.layer .n { color: var(--dim); font-variant-numeric: tabular-nums; }
+.layer.up { color: var(--text); }
+.layer.up .st { color: var(--ok); }
+.layer .st { font-size: 10px; letter-spacing: .08em; }
+
+.kv { display: grid; grid-template-columns: 74px 1fr; gap: 2px var(--s2); font-size: 11px; margin: 0; }
+.kv dt { color: var(--dim); }
+.kv dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
+
+.task {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: var(--s2);
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 0;
+}
+.task .box { color: var(--dim); }
+.task.done { color: var(--text); }
+.task.done .box { color: var(--ok); }
+.task.unknowable .box { color: var(--tx); }
+
+.stack .note { font-size: 10px; color: var(--dim); line-height: 1.5; margin: var(--s2) 0 0; }
+
+/* ---------- chooser ---------- */
+
+.chooser {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: var(--ground);
+  padding: var(--s5);
+  overflow-y: auto;
+}
+.chooser.gone { display: none; }
+
+.sheet { width: min(560px, 100%); }
+
+.chooser .code {
+  color: var(--err);
+  letter-spacing: .18em;
+  font-size: 11px;
+  margin: 0;
+}
+.chooser h1 {
+  font-size: clamp(19px, 3.4vw, 25px);
+  margin: var(--s3) 0;
+  font-weight: 500;
+  letter-spacing: -.015em;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.chooser .blurb { color: var(--muted); margin: 0 0 var(--s5); line-height: 1.65; max-width: 58ch; }
+
+fieldset {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  padding: var(--s4) 0 0;
+  margin: 0 0 var(--s5);
+}
+legend {
+  font-size: 9px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--dim);
+  padding: 0 var(--s2) 0 0;
+}
+
+.opts { display: grid; gap: var(--s2); }
+.opts.three { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 560px) { .opts.three { grid-template-columns: 1fr; } }
+
+.opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--rule);
+  padding: var(--s3) var(--s4);
+  cursor: pointer;
+}
+.opt:hover { border-color: var(--muted); color: var(--text); }
+.opt[aria-pressed="true"] {
+  border-color: var(--tx);
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: inset 3px 0 0 var(--tx);
+}
+.opt b { display: block; font-weight: 500; font-size: 13px; }
+.opt span { display: block; font-size: 11px; color: var(--dim); margin-top: 2px; line-height: 1.45; }
+.opt[aria-pressed="true"] span { color: var(--muted); }
+
+.launch {
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--tx);
+  border: 1px solid var(--tx);
+  padding: 11px 22px;
+  cursor: pointer;
+}
+.launch:hover { background: var(--tx); color: var(--ground); }
+
+.preview {
+  margin: 0 0 var(--s5);
+  padding: var(--s3) var(--s4);
+  border-left: 2px solid var(--rule);
+  background: var(--panel-2);
+  font-size: 12px;
+  color: var(--dim);
+  overflow-x: auto;
+  white-space: pre;
+}
+.preview b { color: var(--tx); font-weight: 400; }
+
+/* ---------- responsive ---------- */
+
+.rail-end .drawer-btn { display: none; }
+
+@media (max-width: 860px) {
+  .main { grid-template-columns: minmax(0,1fr); }
+  .stack {
+    position: fixed;
+    inset: auto 0 0 0;
+    max-height: 62dvh;
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+    box-shadow: var(--shadow);
+    transform: translateY(101%);
+    transition: transform .22s ease;
+    z-index: 30;
+  }
+  .stack.open { transform: none; }
+  .rail-end .drawer-btn { display: inline-block; }
+  .scroll { padding: var(--s3) var(--s4); }
+  .promptbar { padding: var(--s3) var(--s4); }
+  .promptbar .hint { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+
+<div class="chooser" id="chooser">
+  <div class="sheet">
+    <p class="code">ERR_ABSTRACTION_NOT_FOUND</p>
+    <h1>The convenience layer has been removed from your account.</h1>
+    <p class="blurb">Feeds, buttons, sign-in forms and the word "just" were deprecated in
+      this release. Packet now speaks to you at the layer it always did — you were
+      simply being shielded from it. Your network interface is down. Everything
+      else follows from that.</p>
+
+    <fieldset>
+      <legend>Platform</legend>
+      <div class="opts three" id="os-opts">
+        <button class="opt" type="button" data-os="linux" aria-pressed="true">
+          <b>Linux</b><span>iproute2. eth0, CIDR, dhclient.</span>
+        </button>
+        <button class="opt" type="button" data-os="macos" aria-pressed="false">
+          <b>macOS</b><span>BSD tools. en0, ipconfig, route -n add.</span>
+        </button>
+        <button class="opt" type="button" data-os="windows" aria-pressed="false">
+          <b>Windows</b><span>netsh and friends. Dotted subnet masks.</span>
+        </button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Assistance</legend>
+      <div class="opts" id="mode-opts">
+        <button class="opt" type="button" data-mode="guided" aria-pressed="true">
+          <b>Guided</b><span>Errors explain themselves and point at the next move. A
+            checklist tracks what is left. Recommended for a first run.</span>
+        </button>
+        <button class="opt" type="button" data-mode="raw" aria-pressed="false">
+          <b>Unguided</b><span>Real protocol errors and nothing else. No next steps, no
+            checklist, no side panel. The manual is still installed, because real
+            systems ship one.</span>
+        </button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>First move on this platform</legend>
+      <p class="preview" id="preview"></p>
+      <button class="launch" id="launch">Drop to the stack</button>
+    </fieldset>
+  </div>
+</div>
+
+<div class="app" id="app" hidden>
+  <div class="rail">
+    <div class="brand"><b>PACKET</b><span id="brand-tag">no abstractions</span></div>
+    <dl class="gauge"><dt>iface</dt><dd id="g-iface" class="off">DOWN</dd></dl>
+    <dl class="gauge"><dt>address</dt><dd id="g-ip" class="off">unassigned</dd></dl>
+    <dl class="gauge"><dt>tcp</dt><dd id="g-tcp" class="off">CLOSED</dd></dl>
+    <dl class="gauge"><dt>mtu</dt><dd id="g-mtu" class="off">—</dd></dl>
+    <dl class="gauge"><dt>session</dt><dd id="g-auth" class="off">anonymous</dd></dl>
+    <div class="rail-end">
+      <span class="led" id="led"></span>
+      <button class="chip drawer-btn" id="drawer">Stack</button>
+    </div>
+  </div>
+
+  <div class="main" id="mainsplit">
+    <div class="console">
+      <div class="scroll" id="scroll"></div>
+      <form class="promptbar" id="form" autocomplete="off">
+        <label for="cmd" id="ps1">$</label>
+        <input id="cmd" name="cmd" placeholder="man" spellcheck="false" autocapitalize="off" autocorrect="off" />
+        <span class="hint">↑ history · tab completes</span>
+      </form>
+    </div>
+
+    <aside class="stack" id="stackpanel">
+      <section>
+        <h2>Protocol stack</h2>
+        <div id="layers"></div>
+      </section>
+      <section>
+        <h2>Interface</h2>
+        <dl class="kv" id="iface-kv"></dl>
+      </section>
+      <section>
+        <h2>Routing table</h2>
+        <div id="routes" style="font-size:11px"></div>
+      </section>
+      <section id="tasks-section">
+        <h2>Outstanding work</h2>
+        <div id="tasks"></div>
+        <p class="note">This checklist is the last user-friendly feature. It is
+          scheduled for removal.</p>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ======================================================
+     platform vocabularies
+     the same seven layers, spelled three ways
+     ====================================================== */
+
+  var OSES = {
+    linux: {
+      name: "Linux", iface: "eth0", ps1: "$", tag: "iproute2",
+      maskStyle: "cidr",
+      ex: {
+        ifaceShow: "ip addr show",
+        ifaceUp:   "ip link set eth0 up",
+        ifaceMtu:  "ip link set eth0 mtu 1500",
+        dhcp:      "dhclient eth0",
+        dhcpXid:   "dhclient eth0 xid=0x1a2b3",
+        dns:       "dig packet.social",
+        connect:   "nc -v 172.19.44.10 443",
+        routeShow: "ip route",
+        routeAdd:  "ip route add 10.55.12.64/26 via 10.14.7.1",
+        arp:       "ip neigh",
+        trace:     "traceroute @rfc1149",
+        ping:      "ping -c 3 172.19.44.10",
+        conns:     "ss -tn"
+      },
+      pats: [
+        [/^ip\s+link\s+set\s+(?:dev\s+)?eth0\s+up$/i,                 "iface.up"],
+        [/^ip\s+link\s+set\s+(?:dev\s+)?eth0\s+mtu\s+(\d+)$/i,        "iface.mtu"],
+        [/^ip\s+(?:-\w+\s+)?a(?:ddr)?(?:\s+show)?(?:\s+eth0)?$/i,     "iface.show"],
+        [/^ifconfig(?:\s+eth0)?$/i,                                   "iface.show"],
+        [/^dhclient(?:\s+-v)?\s+eth0\s+xid=(\S+)$/i,                  "dhcp.request"],
+        [/^dhclient(?:\s+-v)?\s+eth0$/i,                              "dhcp.discover"],
+        [/^dig\s+(?:\+short\s+)?(\S+)$/i,                             "dns"],
+        [/^ip\s+n(?:eigh)?(?:\s+show)?$/i,                            "arp"],
+        [/^ip\s+route\s+add\s+(\S+)\s+via\s+(\S+)$/i,                 "route.add.cidr"],
+        [/^ip\s+r(?:oute)?(?:\s+show)?$/i,                            "route.show"],
+        [/^traceroute\s+(\S+)$/i,                                     "trace"],
+        [/^ping\s+(?:-c\s*\d+\s+)?(\S+)$/i,                           "ping"],
+        [/^nc\s+(?:-v\s+)?(\S+)\s+(\d+)$/i,                           "connect"],
+        [/^ss\s+-\w+$/i,                                              "conns"],
+        [/^netstat\s+-\w*t\w*$/i,                                     "conns"]
+      ]
+    },
+
+    macos: {
+      name: "macOS", iface: "en0", ps1: "%", tag: "bsd userland",
+      maskStyle: "cidr",
+      ex: {
+        ifaceShow: "ifconfig en0",
+        ifaceUp:   "ifconfig en0 up",
+        ifaceMtu:  "ifconfig en0 mtu 1500",
+        dhcp:      "ipconfig set en0 DHCP",
+        dhcpXid:   "ipconfig set en0 DHCP xid=0x1a2b3",
+        dns:       "dig packet.social",
+        connect:   "nc -v 172.19.44.10 443",
+        routeShow: "netstat -rn",
+        routeAdd:  "route -n add -net 10.55.12.64/26 10.14.7.1",
+        arp:       "arp -a",
+        trace:     "traceroute @rfc1149",
+        ping:      "ping -c 3 172.19.44.10",
+        conns:     "netstat -an -p tcp"
+      },
+      pats: [
+        [/^ifconfig\s+en0\s+up$/i,                                    "iface.up"],
+        [/^ifconfig\s+en0\s+mtu\s+(\d+)$/i,                           "iface.mtu"],
+        [/^ifconfig(?:\s+en0)?(?:\s+-a)?$/i,                          "iface.show"],
+        [/^ipconfig\s+set\s+en0\s+DHCP\s+xid=(\S+)$/i,                "dhcp.request"],
+        [/^ipconfig\s+set\s+en0\s+DHCP$/i,                            "dhcp.discover"],
+        [/^dig\s+(?:\+short\s+)?(\S+)$/i,                             "dns"],
+        [/^arp\s+-a$/i,                                               "arp"],
+        [/^route\s+(?:-n\s+)?add\s+-net\s+(\S+)\s+(\S+)$/i,           "route.add.cidr"],
+        [/^netstat\s+-r\w*$/i,                                        "route.show"],
+        [/^traceroute\s+(\S+)$/i,                                     "trace"],
+        [/^ping\s+(?:-c\s*\d+\s+)?(\S+)$/i,                           "ping"],
+        [/^nc\s+(?:-v\s+)?(\S+)\s+(\d+)$/i,                           "connect"],
+        [/^netstat\s+-an(?:\s+-p\s+tcp)?$/i,                          "conns"]
+      ]
+    },
+
+    windows: {
+      name: "Windows", iface: "Ethernet", ps1: "PS C:\\>", tag: "netsh",
+      maskStyle: "dotted",
+      ex: {
+        ifaceShow: "ipconfig /all",
+        ifaceUp:   'netsh interface set interface "Ethernet" admin=enable',
+        ifaceMtu:  'netsh interface ipv4 set subinterface "Ethernet" mtu=1500',
+        dhcp:      "ipconfig /renew",
+        dhcpXid:   "ipconfig /renew xid=0x1a2b3",
+        dns:       "nslookup packet.social",
+        connect:   "Test-NetConnection 172.19.44.10 -Port 443",
+        routeShow: "route print",
+        routeAdd:  "route add 10.55.12.64 mask 255.255.255.192 10.14.7.1",
+        arp:       "arp -a",
+        trace:     "tracert @rfc1149",
+        ping:      "ping -n 3 172.19.44.10",
+        conns:     "netstat -an"
+      },
+      pats: [
+        [/^netsh\s+interface\s+set\s+interface\s+(?:name=)?"?Ethernet"?\s+(?:admin=)?enabled?$/i, "iface.up"],
+        [/^netsh\s+interface\s+ipv4\s+set\s+subinterface\s+"?Ethernet"?\s+mtu=(\d+)(?:\s+store=persistent)?$/i, "iface.mtu"],
+        [/^ipconfig(?:\s+\/all)?$/i,                                  "iface.show"],
+        [/^ipconfig\s+\/renew\s+xid=(\S+)$/i,                         "dhcp.request"],
+        [/^ipconfig\s+\/renew$/i,                                     "dhcp.discover"],
+        [/^nslookup\s+(\S+)$/i,                                       "dns"],
+        [/^arp\s+-a$/i,                                               "arp"],
+        [/^route\s+add\s+(\S+)\s+mask\s+(\S+)\s+(\S+)$/i,             "route.add.dotted"],
+        [/^route\s+print$/i,                                          "route.show"],
+        [/^tracert\s+(\S+)$/i,                                        "trace"],
+        [/^ping\s+(?:-n\s*\d+\s+)?(\S+)$/i,                           "ping"],
+        [/^Test-NetConnection\s+(\S+)\s+-Port\s+(\d+)$/i,             "connect"],
+        [/^netstat\s+-an?$/i,                                         "conns"]
+      ]
+    }
+  };
+
+  /* ======================================================
+     world state
+     ====================================================== */
+
+  var OS = OSES.linux;
+  var GUIDED = true;
+
+  var S = {
+    link: false,
+    mac: "5e:4f:1a:d2:0b:77",
+    ip: null, maskPrefix: null, gw: null, dns: null, mtu: null,
+    lease: null,
+    offer: null,
+    arp: {},
+    routes: [],
+    dnsCache: {},
+    tcp: "CLOSED",
+    peer: null,
+    serverSeq: 0,
+    authed: false,
+    handle: null,
+    lastDump: null,
+    follows: {},
+    done: {}
+  };
+
+  var HOST = "packet.social";
+  var HOST_IP = "172.19.44.10";
+  var CREDS = { user: "kyle", pass: "hunter2" };
+
+  var PEOPLE = {
+    "@rfc1149":     { addr: "10.55.12.73",  prefix: 26, mac: "02:c0:1d:be:ef:19" },
+    "@bofh":        { addr: "10.88.4.19",   prefix: 16, mac: "02:de:ad:c0:de:01" },
+    "@mtu_truther": { addr: "10.88.4.51",   prefix: 16, mac: "02:8b:aa:11:5c:03" },
+    "@nagle":       { addr: "10.88.4.88",   prefix: 16, mac: "02:40:11:5e:c0:00" },
+    "@halfopen":    { addr: "10.88.4.200",  prefix: 16, mac: "02:59:4e:00:00:00" }
+  };
+
+  var FEED = [
+    { id: 1, who: "@rfc1149", t: 1785961012, likes: 4,
+      text: "Attached the firmware update to a pigeon. Nine hour round trip, zero packet loss, and it made eye contact with me on delivery. Best network I have ever operated." },
+    { id: 2, who: "@bofh", t: 1785957740, likes: 61,
+      text: "Someone filed a ticket asking why the site feels slow. I have added their /32 to a route that transits Adelaide. The site is now slow for a documented reason, which is the same as being fast." },
+    { id: 3, who: "@mtu_truther", t: 1785953301, likes: 12,
+      text: "They lowered your MTU and told you it was for your safety. Ask who benefits when your packets are small and frightened and have to ask permission to cross a router." },
+    { id: 4, who: "@nagle", t: 1785949988, likes: 0,
+      text: "I hold your keystrokes for forty milliseconds before I send them. You have never noticed. You have never once thanked me." },
+    { id: 5, who: "@halfopen", t: 1785944102, likes: 1,
+      text: "Sent a SYN four days ago. Still waiting on the SYN-ACK. I am sure they are just busy. I am sure the connection is fine. I am not going to close it." }
+  ];
+
+  /* ======================================================
+     dom helpers
+     ====================================================== */
+
+  var scroll, input;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function out(text, cls, dir) {
+    var p = document.createElement("p");
+    p.className = "line " + (cls || "sys");
+    if (dir) p.setAttribute("data-dir", dir);
+    p.textContent = text;
+    scroll.appendChild(p);
+    return p;
+  }
+  function raw(html) {
+    var d = document.createElement("div");
+    d.innerHTML = html;
+    scroll.appendChild(d);
+    return d;
+  }
+  function pad() {
+    var p = document.createElement("p");
+    p.className = "line pad";
+    scroll.appendChild(p);
+  }
+  function tx(t) { out(t, "tx", "TX >"); }
+  function rx(t) { out(t, "rx", "RX <"); }
+  function err(t) { out(t, "err"); }
+  function ok(t) { out(t, "ok"); }
+
+  /* the single switch between guided and unguided */
+  function hint(t) { if (GUIDED) out(t, "sys"); }
+
+  function toBottom() { scroll.scrollTop = scroll.scrollHeight; }
+
+  /* ======================================================
+     byte / net utilities
+     ====================================================== */
+
+  function bytes(s) { return new TextEncoder().encode(s).length; }
+  function b64(s) { return btoa(String.fromCharCode.apply(null, new TextEncoder().encode(s))); }
+
+  function ipToInt(ip) {
+    var p = String(ip).split(".");
+    if (p.length !== 4) return null;
+    var n = 0;
+    for (var i = 0; i < 4; i++) {
+      if (!/^\d{1,3}$/.test(p[i])) return null;
+      var o = Number(p[i]);
+      if (o < 0 || o > 255) return null;
+      n = (n * 256) + o;
+    }
+    return n;
+  }
+  function intToIp(n) {
+    return [(n / 16777216) | 0, ((n / 65536) | 0) % 256, ((n / 256) | 0) % 256, n % 256].join(".");
+  }
+  function netOf(ip, prefix) {
+    var n = ipToInt(ip);
+    if (n === null) return null;
+    var block = Math.pow(2, 32 - prefix);
+    return intToIp(Math.floor(n / block) * block);
+  }
+  function prefixToMask(p) {
+    return intToIp(p === 0 ? 0 : Math.pow(2, 32) - Math.pow(2, 32 - p));
+  }
+  function maskToPrefix(m) {
+    var n = ipToInt(m);
+    if (n === null) return null;
+    var bits = "";
+    for (var i = 31; i >= 0; i--) bits += (Math.floor(n / Math.pow(2, i)) % 2);
+    var mm = bits.match(/^(1*)(0*)$/);
+    return mm ? mm[1].length : null;
+  }
+
+  function hexdump(str) {
+    var b = new TextEncoder().encode(str);
+    var lines = [];
+    for (var i = 0; i < b.length; i += 16) {
+      var chunk = b.subarray(i, i + 16);
+      var h = "", a = "";
+      for (var j = 0; j < 16; j++) {
+        if (j === 8) h += " ";
+        if (j < chunk.length) {
+          h += ("0" + chunk[j].toString(16)).slice(-2) + " ";
+          a += (chunk[j] >= 32 && chunk[j] < 127) ? String.fromCharCode(chunk[j]) : ".";
+        } else { h += "   "; }
+      }
+      lines.push('<span class="off">' + ("0000000" + i.toString(16)).slice(-8) + "</span>  " +
+        h + ' <span class="asc">|' + esc(a) + "|</span>");
+    }
+    lines.push('<span class="off">' + ("0000000" + b.length.toString(16)).slice(-8) + "</span>");
+    return '<div class="hexwrap"><pre class="hex">' + lines.join("\n") + "</pre></div>";
+  }
+
+  function stamp(t) {
+    return new Date(t * 1000).toISOString().replace("T", " ").replace(".000Z", " UTC");
+  }
+
+  /* ======================================================
+     panel rendering
+     ====================================================== */
+
+  var LAYERS = [
+    { n: 7, name: "application",  up: function () { return S.authed; } },
+    { n: 6, name: "presentation", up: function () { return S.authed; } },
+    { n: 5, name: "session",      up: function () { return S.tcp === "ESTABLISHED"; } },
+    { n: 4, name: "transport",    up: function () { return S.tcp === "ESTABLISHED"; } },
+    { n: 3, name: "network",      up: function () { return !!S.ip; } },
+    { n: 2, name: "data link",    up: function () { return S.link; } },
+    { n: 1, name: "physical",     up: function () { return S.link; } }
+  ];
+
+  var TASKS = [
+    { k: "link",   label: "bring the interface up" },
+    { k: "lease",  label: "obtain an address" },
+    { k: "dns",    label: "resolve packet.social" },
+    { k: "tcp",    label: "complete the handshake" },
+    { k: "auth",   label: "authenticate" },
+    { k: "feed",   label: "read the feed" },
+    { k: "post",   label: "publish a post" },
+    { k: "like",   label: "like something (unverifiable)", unknowable: true },
+    { k: "follow", label: "route to @rfc1149" }
+  ];
+
+  function setGauge(id, text, cls) {
+    var el = document.getElementById(id);
+    el.textContent = text;
+    el.className = cls || "";
+  }
+  function row(k, v) { return "<dt>" + esc(k) + "</dt><dd>" + esc(v) + "</dd>"; }
+
+  function render() {
+    setGauge("g-iface", OS.iface + (S.link ? " UP" : " DOWN"), S.link ? "on" : "off");
+    setGauge("g-ip", S.ip ? S.ip + "/" + S.maskPrefix : "unassigned", S.ip ? "on" : "off");
+    setGauge("g-tcp", S.tcp, S.tcp === "ESTABLISHED" ? "on" : (S.tcp === "CLOSED" ? "off" : "warn"));
+    setGauge("g-mtu", S.mtu ? S.mtu + " B" : "—", S.mtu === null ? "off" : (S.mtu < 576 ? "bad" : "on"));
+    setGauge("g-auth", S.authed ? S.handle : "anonymous", S.authed ? "on" : "off");
+
+    document.getElementById("led").className =
+      "led" + (S.tcp === "ESTABLISHED" ? " live" : (S.link ? " dead" : ""));
+
+    document.getElementById("layers").innerHTML = LAYERS.map(function (L) {
+      var up = L.up();
+      return '<div class="layer' + (up ? " up" : "") + '"><span class="n">L' + L.n +
+        '</span><span>' + L.name + '</span><span class="st">' + (up ? "UP" : "—") + "</span></div>";
+    }).join("");
+
+    document.getElementById("iface-kv").innerHTML =
+      row("device", OS.iface) +
+      row("hwaddr", S.mac) +
+      row("inet", S.ip ? S.ip + "/" + S.maskPrefix : "—") +
+      row("netmask", S.maskPrefix === null ? "—" : prefixToMask(S.maskPrefix)) +
+      row("gateway", S.gw || "—") +
+      row("resolver", S.dns || "—") +
+      row("mtu", S.mtu === null ? "—" : S.mtu);
+
+    document.getElementById("routes").innerHTML = S.routes.length
+      ? S.routes.map(function (r) {
+          return '<div style="display:flex;gap:8px"><span style="color:var(--muted);min-width:118px">' +
+            esc(r.dest) + '</span><span>' + esc(r.via) + "</span></div>";
+        }).join("")
+      : '<span style="color:var(--dim)">no routes — nothing is reachable</span>';
+
+    document.getElementById("tasks").innerHTML = TASKS.map(function (t) {
+      var d = !!S.done[t.k];
+      var box = d ? (t.unknowable ? "[?]" : "[x]") : "[ ]";
+      return '<div class="task' + (d ? " done" : "") + (t.unknowable && d ? " unknowable" : "") +
+        '"><span class="box">' + box + "</span><span>" + esc(t.label) + "</span></div>";
+    }).join("");
+  }
+
+  /* ======================================================
+     man pages — generated from the active platform
+     ====================================================== */
+
+  var MAN = {};
+
+  function buildMan() {
+    var e = OS.ex;
+    MAN = {
+      intro: [
+        "PACKET(7)                     hostile networks                    PACKET(7)",
+        "",
+        "NAME",
+        "     packet — a social network with the convenience layer removed",
+        "",
+        "PLATFORM",
+        "     You selected " + OS.name + ". The networking commands below are the",
+        "     " + OS.name + " spellings. The same seven layers exist on every platform;",
+        "     only the vocabulary changes.",
+        "",
+        "DESCRIPTION",
+        "     Every action other networks perform silently on your behalf must",
+        "     here be performed by you, in order, at the correct layer. Nothing",
+        "     is retried for you. Nothing is confirmed for you. Bytes are counted",
+        "     by you.",
+        "",
+        "     Work upward. An interface, then an address, then a name, then a",
+        "     connection, then a session, then — eventually — other people.",
+        "",
+        "PAGES",
+        "     man iface      man dhcp    man dns      man route    man connect",
+        "     man auth       man get     man post     man udp      man tools",
+        "     man etiquette  man os",
+        "",
+        "FIRST MOVE",
+        "     " + e.ifaceUp
+      ],
+
+      os: [
+        "OS(7)",
+        "",
+        "     Active platform: " + OS.name + "   interface: " + OS.iface,
+        "",
+        "     A quick sheet of what changes between platforms. Everything here",
+        "     is the real command on the real system.",
+        "",
+        "                    Linux              macOS               Windows",
+        "     interface up   ip link set        ifconfig en0 up     netsh interface set",
+        "     show address   ip addr show       ifconfig en0        ipconfig /all",
+        "     dhcp           dhclient eth0      ipconfig set en0    ipconfig /renew",
+        "     resolve        dig                dig                 nslookup",
+        "     add route      ip route add       route -n add -net   route add ... mask",
+        "     print routes   ip route           netstat -rn         route print",
+        "     neighbours     ip neigh           arp -a              arp -a",
+        "     trace path     traceroute         traceroute          tracert",
+        "",
+        "     The sharpest difference is the netmask. Linux and macOS take a",
+        "     prefix length (/26). Windows takes the mask written out in full",
+        "     (255.255.255.192). They mean the same thing; only one of them",
+        "     asks you to do the arithmetic in your head.",
+        "",
+        "     On this platform: " + (OS.maskStyle === "cidr" ? "prefix length." : "dotted mask.")
+      ],
+
+      iface: [
+        "IFACE(8)   — " + OS.name,
+        "",
+        "     " + e.ifaceShow.padEnd(52) + "show interface state",
+        "     " + e.ifaceUp.padEnd(52) + "energise the interface",
+        "     " + e.ifaceMtu.padEnd(52) + "set the MTU",
+        "",
+        "NOTES",
+        "     Your DHCP lease may hand you an MTU of 68 bytes. That is the legal",
+        "     minimum an IPv4 router must forward. It is not a mistake. It is",
+        "     within spec. It will ruin your day, also within spec."
+      ],
+
+      dhcp: [
+        "DHCP(8)   — " + OS.name,
+        "",
+        "     " + e.dhcp.padEnd(52) + "broadcast; a server may OFFER",
+        "     " + e.dhcpXid.padEnd(52) + "claim that offer; expect an ACK",
+        "",
+        "NOTES",
+        "     DORA: Discover, Offer, Request, Acknowledge. Real tools do all",
+        "     four inside one invocation. This platform splits them so you can",
+        "     watch each message, which is why the second form takes an xid",
+        "     argument that no real client asks you for.",
+        "",
+        "     The transaction id must be copied exactly from the OFFER. It is",
+        "     what ties a reply to a conversation, and it is not remembered",
+        "     for you."
+      ],
+
+      dns: [
+        "DNS(1)   — " + OS.name,
+        "",
+        "     " + e.dns.padEnd(52) + "query for an A record",
+        "",
+        "NOTES",
+        "     Requires a resolver, which requires a lease. Names are a courtesy",
+        "     extended to you by strangers with servers. Addresses are the truth."
+      ],
+
+      route: [
+        "ROUTE(8)   — " + OS.name,
+        "",
+        "     " + e.routeShow.padEnd(52) + "print the routing table",
+        "     " + e.routeAdd.padEnd(52) + "install a route",
+        "     " + e.trace.padEnd(52) + "find a person's address and prefix",
+        "     " + e.arp.padEnd(52) + "show the neighbour cache",
+        "",
+        "NOTES",
+        "     Following someone means installing a route to their network. The",
+        "     destination must be a network address: every host bit below the",
+        "     prefix must be zero. 10.55.12.73/26 is a host, not a network.",
+        "     Compute it. The block size for a /26 is 64.",
+        "",
+        (OS.maskStyle === "dotted"
+          ? "     This platform wants the mask spelled out. A /26 is 255.255.255.192."
+          : "     This platform wants the prefix length, written /26.")
+      ],
+
+      connect: [
+        "CONNECT(2)   — " + OS.name,
+        "",
+        "     " + e.connect.padEnd(52) + "send SYN, await SYN-ACK",
+        "     ack <number>" + "                                        complete the handshake",
+        "     close" + "                                               send FIN, tear it down",
+        "     " + e.conns.padEnd(52) + "show the connection",
+        "",
+        "NOTES",
+        "     No real client makes you acknowledge by hand; the kernel does it",
+        "     in microseconds. `ack` is this platform's invention so that you",
+        "     have to look at the number.",
+        "",
+        "     The server answers your SYN with its own sequence number. You must",
+        "     acknowledge the next byte it expects to send, which is that number",
+        "     plus one. A wrong acknowledgement earns a RST and a fresh start",
+        "     with a fresh number."
+      ],
+
+      auth: [
+        "AUTH(1)",
+        "",
+        "     auth <base64>                present credentials on this connection",
+        "",
+        "DESCRIPTION",
+        "     HTTP Basic authentication does not accept a username field and a",
+        "     password field. It accepts one string: the user, a colon, then the",
+        "     password — the whole thing encoded to base64 and sent as a header.",
+        "",
+        "     So it is two commands, in this order:",
+        "",
+        "         base64 someuser:somepassword     prints an encoded blob",
+        "         auth <that blob>                 presents it to the server",
+        "",
+        "     If a 401 has handed you a user and a pass, join them with a colon",
+        "     yourself. No spaces. No quotes. The colon is not optional; it is",
+        "     the only thing separating the two halves.",
+        "",
+        "NOTES",
+        "     Base64 is not encryption. It is a way of carrying arbitrary bytes",
+        "     through a header that only tolerates ASCII. Anyone holding the",
+        "     wire can reverse it in one command, which is why sending this",
+        "     over an unencrypted connection is a historical mistake rather",
+        "     than a security measure.",
+        "",
+        "     Your session dies with the connection. `close` makes you nobody."
+      ],
+
+      get: [
+        "GET(1)",
+        "",
+        "     get /feed                    retrieve the feed",
+        "     get /profile/@handle         retrieve a profile",
+        "",
+        "NOTES",
+        "     Responses arrive as octets. They are rendered as octets. If you",
+        "     want prose, run `xxd -r` to reverse the most recent dump — a",
+        "     decoding convenience which we regret providing."
+      ],
+
+      post: [
+        "POST(1)",
+        "",
+        "     post --length <n> <text>     publish; n must equal the body length",
+        "     wc -c <text>                 count bytes in text",
+        "",
+        "NOTES",
+        "     Content-Length is measured in bytes, not characters. In UTF-8 an",
+        "     em dash is three bytes and an emoji is usually four. Miscount and",
+        "     the server will refuse the entity, correctly, and tell you exactly",
+        "     how wrong you were.",
+        "",
+        "     The body must also fit inside the path MTU less forty bytes of",
+        "     IP and TCP headers. Fragmentation is not offered."
+      ],
+
+      udp: [
+        "UDP(4)",
+        "",
+        "     udp <ip>:<port> <payload>    transmit a datagram",
+        "",
+        "     Likes are datagrams to port 6969. There is no acknowledgement,",
+        "     no delivery report, and no retransmission. You will never know",
+        "     whether you liked something. Neither will they. This is the most",
+        "     honest feature on the platform."
+      ],
+
+      tools: [
+        "TOOLS(1)",
+        "",
+        "     These are this platform's own utilities, not " + OS.name + " commands.",
+        "     They are spelled the same everywhere so that the only thing the",
+        "     platform choice changes is the networking.",
+        "",
+        "     base64 <text>                encode text  (see `man auth`)",
+        "     auth <base64>                present encoded credentials",
+        "     wc -c <text>                 count bytes",
+        "     date -d <epoch>              convert a timestamp to something human",
+        "     xxd -r                       reverse the last hex dump",
+        "     man <page>                   read a page",
+        "     clear                        clear the scrollback"
+      ],
+
+      etiquette: [
+        "ETIQUETTE(7)",
+        "",
+        "     Do not ask how to delete a post. Data on a network cannot be",
+        "     recalled, only outlived. DELETE returns 405 and always will.",
+        "",
+        "     Do not ask for notifications. A notification is an unsolicited",
+        "     inbound connection and your firewall policy is DROP.",
+        "",
+        "     Timestamps are seconds since 1970. Nobody here says `2h ago`.",
+        "     `2h ago` is a lie told to people who are not counting."
+      ]
+    };
+  }
+
+  /* ======================================================
+     guards
+     ====================================================== */
+
+  function needLink() {
+    if (!S.link) { err(OS.iface + ": network is down — no carrier"); return true; }
+    return false;
+  }
+  function needIP() {
+    if (needLink()) return true;
+    if (!S.ip) { err("network is unreachable — no address configured"); return true; }
+    return false;
+  }
+  function lossy() {
+    if (Math.random() < 0.12) {
+      err("recv: operation timed out after 500ms — no ACK. Retransmit.");
+      return true;
+    }
+    return false;
+  }
+
+  /* ======================================================
+     actions — one implementation, three vocabularies
+     ====================================================== */
+
+  var A = {};
+
+  A["iface.show"] = function () {
+    out(OS.iface + ": flags=" + (S.link ? "<UP,BROADCAST,RUNNING>" : "<BROADCAST>") +
+        "  mtu " + (S.mtu === null ? "-" : S.mtu), "sys");
+    out("        ether " + S.mac, "sys");
+    out("        inet " + (S.ip ? S.ip + "  netmask " + prefixToMask(S.maskPrefix) +
+        "  gateway " + S.gw : "0.0.0.0  (no address)"), "sys");
+    out("        status: " + (S.link ? "active" : "no carrier"), "sys");
+  };
+
+  A["iface.up"] = function () {
+    if (S.link) { out(OS.iface + ": already up", "sys"); return; }
+    S.link = true; S.done.link = true;
+    out(OS.iface + ": energising phy", "sys");
+    rx("link partner: 1000baseT full-duplex, autoneg complete");
+    ok(OS.iface + ": carrier detected");
+    hint("You have a wire. You have nothing else — no address, so nobody can");
+    hint("speak to you. `man dhcp`.");
+  };
+
+  A["iface.mtu"] = function (m) {
+    if (needLink()) return;
+    var n = Number(m[1]);
+    if (!n || n < 68 || n > 9000) { err("mtu must be between 68 and 9000"); return; }
+    S.mtu = n;
+    ok(OS.iface + ": mtu set to " + n + " bytes");
+    if (n >= 1500) hint("Your packets may now contain a sentence.");
+  };
+
+  A["dhcp.discover"] = function () {
+    if (needLink()) return;
+    S.offer = { ip: "10.14.7.23", xid: "0x" + Math.floor(Math.random() * 0xfffff + 0x10000).toString(16) };
+    tx("DHCPDISCOVER  ciaddr=0.0.0.0  chaddr=" + S.mac + "  broadcast 255.255.255.255:67");
+    rx("DHCPOFFER from 10.14.7.1");
+    out("        yiaddr   " + S.offer.ip, "sys");
+    out("        xid      " + S.offer.xid, "sys");
+    out("        mask     255.255.255.0   (/24)", "sys");
+    out("        router   10.14.7.1", "sys");
+    out("        dns      10.14.7.1", "sys");
+    out("        mtu      68", "sys");
+    out("        lease    600s", "sys");
+    hint("Nothing is assigned yet. An offer is not a lease. Claim it with the");
+    hint("same command plus the xid above: " + OS.ex.dhcpXid.replace(/0x1a2b3$/, S.offer.xid));
+  };
+
+  A["dhcp.request"] = function (m) {
+    if (needLink()) return;
+    if (!S.offer) { err("DHCPNAK: no outstanding offer — discover first"); return; }
+    var xid = String(m[1]).replace(/^xid=/, "");
+    if (xid.toLowerCase() !== S.offer.xid.toLowerCase()) {
+      err("DHCPNAK: transaction id mismatch — this reply belongs to no conversation");
+      hint("The offer carried xid " + S.offer.xid + ". Type that one.");
+      return;
+    }
+    tx("DHCPREQUEST  requested-ip=" + S.offer.ip + "  xid=" + S.offer.xid);
+    rx("DHCPACK from 10.14.7.1 — lease bound");
+    S.ip = S.offer.ip; S.maskPrefix = 24; S.gw = "10.14.7.1"; S.dns = "10.14.7.1";
+    S.mtu = 68; S.lease = "600s";
+    S.arp[S.gw] = "00:1c:0e:aa:31:04";
+    S.routes = [
+      { dest: OS.maskStyle === "dotted" ? "10.14.7.0 mask 255.255.255.0" : "10.14.7.0/24", via: "link" },
+      { dest: OS.maskStyle === "dotted" ? "0.0.0.0 mask 0.0.0.0" : "0.0.0.0/0", via: "10.14.7.1" }
+    ];
+    S.done.lease = true;
+    ok("inet " + S.ip + "/24 configured on " + OS.iface);
+    hint("Your lease includes an MTU of 68 bytes. This is legal, and it is the");
+    hint("smallest datagram a router is obliged to forward. Remember it later.");
+    hint("You have an address. You still do not know where anyone lives: `man dns`.");
+  };
+
+  A["dns"] = function (m) {
+    if (needLink()) return;
+    if (!S.dns) { err("connection timed out; no servers could be reached"); return; }
+    var name = String(m[1]).toLowerCase();
+    tx("DNS query  " + name + "  type=A  -> " + S.dns + ":53  (udp)");
+    if (name !== HOST) {
+      rx("status: NXDOMAIN — no such name");
+      hint("Only one host answers here, and it is " + HOST + ".");
+      return;
+    }
+    rx("status: NOERROR  answer section:");
+    out("        " + HOST + ".   300   IN   A   " + HOST_IP, "sys");
+    S.dnsCache[HOST] = HOST_IP;
+    S.done.dns = true;
+    hint("A name has become a number. Numbers are connectable: `man connect`.");
+  };
+
+  A["arp"] = function () {
+    var keys = Object.keys(S.arp);
+    if (!keys.length) { out("neighbour cache is empty", "sys"); return; }
+    keys.forEach(function (k) { out("  " + k + "   at " + S.arp[k] + "   on " + OS.iface, "sys"); });
+  };
+
+  A["route.show"] = function () {
+    if (!S.routes.length) { out("routing table is empty", "sys"); return; }
+    out("destination                     gateway", "sys");
+    S.routes.forEach(function (r) { out("  " + String(r.dest).padEnd(30) + "  " + r.via, "sys"); });
+  };
+
+  A["route.add.cidr"] = function (m) {
+    var cm = String(m[1]).match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
+    if (!cm) { err("route: destination must be CIDR, e.g. 10.0.0.0/24"); return; }
+    addRoute(cm[1], Number(cm[2]), m[2], m[1]);
+  };
+
+  A["route.add.dotted"] = function (m) {
+    var dest = m[1], mask = m[2], gw = m[3];
+    var prefix = maskToPrefix(mask);
+    if (prefix === null) {
+      err("route: " + mask + " is not a valid subnet mask");
+      hint("A mask is a run of ones then a run of zeroes. 255.255.255.192 is legal;");
+      hint("255.255.192.255 is not.");
+      return;
+    }
+    addRoute(dest, prefix, gw, dest + " mask " + mask);
+  };
+
+  function addRoute(dest, prefix, gw, label) {
+    if (needIP()) return;
+    if (ipToInt(dest) === null || prefix < 0 || prefix > 32) { err("route: malformed destination"); return; }
+    if (netOf(dest, prefix) !== dest) {
+      err("route: " + dest + "/" + prefix + " is not a network address — host bits are set");
+      hint("The network address for " + dest + "/" + prefix + " is " +
+           netOf(dest, prefix) + "/" + prefix + ".");
+      if (OS.maskStyle === "dotted") hint("Written out, the mask is " + prefixToMask(prefix) + ".");
+      return;
+    }
+    if (gw !== S.gw) { err("route: gateway " + gw + " is not on any attached network"); return; }
+
+    var matched = null;
+    Object.keys(PEOPLE).forEach(function (h) {
+      if (netOf(PEOPLE[h].addr, prefix) === dest) matched = h;
+    });
+
+    S.routes.push({ dest: label, via: gw });
+    ok("route added: " + label + " -> " + gw);
+    if (matched) {
+      S.follows[matched] = true;
+      S.arp[PEOPLE[matched].addr] = PEOPLE[matched].mac;
+      out(matched + " is now reachable.", "sys");
+      hint("This is what following is. It was always this.");
+      if (matched === "@rfc1149") S.done.follow = true;
+    } else {
+      hint("Nothing you know of lives on that network. The route is valid and useless.");
+    }
+  }
+
+  A["trace"] = function (m) {
+    if (needIP()) return;
+    var h = String(m[1]).toLowerCase();
+    if (!PEOPLE[h]) { err("unable to resolve target system name " + m[1]); return; }
+    var p = PEOPLE[h];
+    tx("tracing route to " + h + ", 30 hops max");
+    rx(" 1  10.14.7.1        0.412 ms");
+    rx(" 2  172.19.44.1     14.006 ms");
+    rx(" 3  " + p.addr + "/" + p.prefix + "   " + (30 + Math.random() * 40).toFixed(3) + " ms  " + h);
+    hint("They live at " + p.addr + " inside a /" + p.prefix + ". To follow them you route");
+    hint("to their network, not to them. `man route`.");
+  };
+
+  A["ping"] = function (m) {
+    if (needIP()) return;
+    var t = m[1];
+    tx("PING " + t + " 56 bytes of data");
+    if (t !== HOST_IP && t !== S.gw && !S.arp[t]) {
+      err("From " + S.gw + ": Destination Net Unreachable");
+      return;
+    }
+    for (var i = 0; i < 3; i++) {
+      rx("64 bytes from " + t + ": icmp_seq=" + (i + 1) + " ttl=57 time=" +
+         (11 + Math.random() * 9).toFixed(1) + " ms");
+    }
+    out("3 packets transmitted, 3 received, 0% loss", "sys");
+    hint("It is alive and it resents you specifically.");
+  };
+
+  A["connect"] = function (m) {
+    if (needIP()) return;
+    var ip = m[1], port = m[2];
+    if (ipToInt(ip) === null) { err("connect: " + ip + " is not an address. Resolve the name first."); return; }
+    if (ip !== HOST_IP) { err("connect: no route to host " + ip); return; }
+    if (port !== "443") { err("connect: connection refused on port " + port); return; }
+    S.serverSeq = Math.floor(Math.random() * 900000000) + 100000000;
+    S.tcp = "SYN-SENT"; S.peer = ip + ":" + port;
+    tx("[SYN]      seq=0 win=64240 len=0  -> " + S.peer);
+    rx("[SYN,ACK]  seq=" + S.serverSeq + " ack=1 win=65535 len=0");
+    S.tcp = "SYN-RECEIVED";
+    hint("Half open. The server has told you where its byte stream begins.");
+    hint("Acknowledge the next byte you expect from it: `ack <number>`.");
+  };
+
+  A["ack"] = function (m) {
+    if (S.tcp !== "SYN-RECEIVED") { err("ack: no handshake in progress"); return; }
+    var n = Number(m[1]);
+    if (isNaN(n)) { err("ack: usage: ack <number>"); return; }
+    if (n !== S.serverSeq + 1) {
+      tx("[ACK]  ack=" + n);
+      err("[RST]  sequence mismatch — connection reset by peer");
+      hint("You acknowledged " + n + ". It sent " + S.serverSeq + " and expects that plus one.");
+      S.tcp = "CLOSED"; S.peer = null;
+      return;
+    }
+    tx("[ACK]  seq=1 ack=" + n + " win=64240 len=0");
+    S.tcp = "ESTABLISHED"; S.done.tcp = true;
+    ok("connection ESTABLISHED to " + S.peer);
+    hint("Three packets to say hello. Now say something: `get /feed`.");
+  };
+
+  A["close"] = function () {
+    if (S.tcp !== "ESTABLISHED") { err("close: no connection"); return; }
+    tx("[FIN,ACK]");
+    rx("[FIN,ACK] — peer closing");
+    tx("[ACK]");
+    S.tcp = "CLOSED"; S.authed = false; S.peer = null;
+    out("connection closed", "sys");
+    hint("Your posts remain. They always remain.");
+  };
+
+  A["conns"] = function () {
+    if (S.tcp === "CLOSED") { out("no active connections", "sys"); return; }
+    out("proto  local                 remote                 state", "sys");
+    out("tcp    " + (S.ip + ":49" + Math.floor(100 + Math.random() * 800)).padEnd(21) + " " +
+        String(S.peer).padEnd(22) + " " + S.tcp, "sys");
+  };
+
+  A["base64"] = function (m) {
+    var text = m[1];
+    if (!text) { err("base64: nothing to encode"); return; }
+    var enc = b64(text);
+    out(enc, "sys");
+    if (GUIDED && /^[^\s:]+:[^\s]+$/.test(text) && !S.authed) {
+      out("That looks like a credential pair. Present it with: auth " + enc, "sys");
+    }
+  };
+
+  A["wc"] = function (m) {
+    var text = m[1];
+    if (!text) { err("wc: nothing to count"); return; }
+    out(bytes(text) + "  bytes", "sys");
+  };
+
+  A["date"] = function (m) {
+    var n = Number(m[1]);
+    if (isNaN(n)) { err("date: -d expects seconds since the epoch"); return; }
+    out(stamp(n), "sys");
+  };
+
+  A["auth"] = function (m) {
+    if (S.tcp !== "ESTABLISHED") { err("auth: no connection"); return; }
+    var token = m[1];
+    if (!token) { err("auth: usage: auth <base64 of user:password>"); return; }
+    var want = b64(CREDS.user + ":" + CREDS.pass);
+    tx("Authorization: Basic " + token);
+    if (token !== want) {
+      err("HTTP/1.1 401 Unauthorized — credentials did not decode to a known principal");
+      hint("Encode exactly `user:password`, colon included, no spaces. `man auth`.");
+      return;
+    }
+    rx("HTTP/1.1 200 OK — principal " + CREDS.user + " bound to this session");
+    S.authed = true; S.handle = "@" + CREDS.user; S.done.auth = true;
+    hint("You are somebody. Until this connection closes.");
+  };
+
+  A["get"] = function (m) {
+    if (S.tcp !== "ESTABLISHED") { err("get: transport endpoint is not connected"); return; }
+    var path = m[1];
+    if (!path) { err("get: usage: get /feed"); return; }
+    tx("GET " + path + " HTTP/1.1");
+    tx("Host: " + HOST);
+    if (S.authed) tx("Authorization: Basic " + b64(CREDS.user + ":" + CREDS.pass));
+
+    if (!S.authed) {
+      rx("HTTP/1.1 401 Unauthorized");
+      rx('WWW-Authenticate: Basic realm="' + HOST + '"');
+      out('body: { "user": "' + CREDS.user + '", "pass": "' + CREDS.pass + '" }', "sys");
+      if (GUIDED) {
+        pad();
+        hint("The realm has leaked its own credentials. Basic auth wants those as");
+        hint("one colon-joined string, base64 encoded. Two commands, in this order:");
+        hint("    base64 " + CREDS.user + ":" + CREDS.pass);
+        hint("    auth <whatever that printed>");
+        hint("It will not run either of them for you. `man auth` explains why.");
+      }
+      return;
+    }
+    if (lossy()) return;
+
+    if (path === "/feed") {
+      rx("HTTP/1.1 200 OK  content-type: application/octet-stream");
+      var body = FEED.map(function (p) {
+        return "#" + p.id + " " + p.who + " t=" + p.t + " likes=" + p.likes + "\n" + p.text;
+      }).join("\n\n");
+      S.lastDump = body;
+      raw(hexdump(body));
+      out("Content-Length: " + bytes(body), "sys");
+      S.done.feed = true;
+      hint("That is the feed. It is all there. `xxd -r` if you cannot read hex yet.");
+      return;
+    }
+    var pm = path.match(/^\/profile\/(@[a-z0-9_]+)$/i);
+    if (pm) {
+      var h = pm[1].toLowerCase();
+      if (!PEOPLE[h]) { rx("HTTP/1.1 404 Not Found"); return; }
+      var per = PEOPLE[h];
+      var n = FEED.filter(function (p) { return p.who === h; }).length;
+      var prof = h + "\naddr=" + per.addr + "/" + per.prefix + "\nhwaddr=" + per.mac +
+        "\nposts=" + n + "\nroute=" + (S.follows[h] ? "installed" : "none") +
+        "\navatar=none (an avatar is 40kB you did not consent to receive)";
+      S.lastDump = prof;
+      rx("HTTP/1.1 200 OK  content-type: application/octet-stream");
+      raw(hexdump(prof));
+      return;
+    }
+    rx("HTTP/1.1 404 Not Found");
+    hint("Known paths: /feed and /profile/@handle. There is no /explore.");
+  };
+
+  A["xxd"] = function () {
+    if (!S.lastDump) { err("xxd: no dump in the buffer"); return; }
+    var text = S.lastDump;
+    if (!/^#\d+ @/.test(text)) { out(text, "sys"); return; }
+    var blocks = text.split("\n\n");
+    blocks.forEach(function (b) {
+      var lines = b.split("\n");
+      var head = lines[0].match(/^#(\d+) (@\w+) t=(\d+) likes=(\d+)$/);
+      if (!head) { out(b, "sys"); return; }
+      raw('<div class="post"><div class="meta">' +
+        "<span>#" + head[1] + "</span><b>" + esc(head[2]) + "</b>" +
+        "<span>t=" + head[3] + "</span>" +
+        "<span>" + esc(PEOPLE[head[2]] ? PEOPLE[head[2]].mac : "??") + "</span>" +
+        '</div><div class="body">' + esc(lines.slice(1).join("\n")) + "</div>" +
+        '<div class="tally">' + head[4] + " datagrams received on port 6969 " +
+        "(an unknown number were lost and are not counted here)</div></div>");
+    });
+    hint("Decoded " + blocks.length + " records. Timestamps are epoch seconds; `date -d`.");
+  };
+
+  A["post"] = function (m) {
+    if (S.tcp !== "ESTABLISHED") { err("post: transport endpoint is not connected"); return; }
+    if (!S.authed) { err("HTTP/1.1 401 Unauthorized — anonymous writes are not accepted"); return; }
+    var declared = Number(m[1]);
+    var body = m[2];
+    var actual = bytes(body);
+
+    if (S.mtu !== null && actual + 40 > S.mtu) {
+      tx("POST /post HTTP/1.1  Content-Length: " + declared);
+      err("sendto: EMSGSIZE — message too long, fragmentation needed and DF set");
+      hint("Path MTU is " + S.mtu + " bytes. Headers take 40, leaving " + (S.mtu - 40) +
+           " for you,");
+      hint("and you brought " + actual + ". Raise it: " + OS.ex.ifaceMtu);
+      return;
+    }
+    if (declared !== actual) {
+      tx("POST /post HTTP/1.1");
+      tx("Content-Length: " + declared);
+      tx(body);
+      err("HTTP/1.1 400 Bad Request — entity body length mismatch");
+      hint("You declared " + declared + " bytes. You transmitted " + actual + ".");
+      hint("Bytes are not characters. Count first with `wc -c <your text>`.");
+      return;
+    }
+    if (lossy()) return;
+
+    tx("POST /post HTTP/1.1");
+    tx("Host: " + HOST);
+    tx("Content-Length: " + declared);
+    tx("");
+    tx(body);
+    rx("HTTP/1.1 201 Created  location: /post/" + (FEED.length + 1));
+    FEED.push({ id: FEED.length + 1, who: S.handle, t: Math.floor(Date.now() / 1000), likes: 0, text: body });
+    PEOPLE[S.handle] = PEOPLE[S.handle] || { addr: S.ip, prefix: 24, mac: S.mac };
+    S.done.post = true;
+    hint("Published, byte-exact. Nobody was notified. Notifications are inbound");
+    hint("connections and your firewall policy is DROP.");
+  };
+
+  A["udp"] = function (m) {
+    if (needIP()) return;
+    var ip = m[1], port = m[2], payload = m[3];
+    if (!payload) { err("udp: empty datagram"); return; }
+    if (ip !== HOST_IP) { err("udp: no route to host " + ip); return; }
+    tx("UDP " + ip + ":" + port + "  len=" + bytes(payload) + "  " + payload);
+    out("datagram handed to the interface", "sys");
+
+    var lm = payload.match(/^LIKE:(\d+)$/i);
+    if (port === "6969" && lm) {
+      var target = FEED.filter(function (p) { return p.id === Number(lm[1]); })[0];
+      if (Math.random() > 0.35 && target) target.likes += 1;
+      S.done.like = true;
+      hint("No acknowledgement will arrive. None is defined. You may re-GET the feed");
+      hint("and compare counters, but a counter that did not move proves nothing —");
+      hint("your datagram may still be in flight, or in a bin.");
+      return;
+    }
+    if (port === "6969") hint("Port 6969 expects `LIKE:<id>`. It did not get that, and said nothing.");
+    else hint("Nothing listens on port " + port + ". No error is generated. That is the protocol.");
+  };
+
+  A["delete"] = function () {
+    tx("DELETE /post/1 HTTP/1.1");
+    err("HTTP/1.1 405 Method Not Allowed");
+    out("allow: GET, POST", "sys");
+    hint("A network cannot recall what it has already forwarded. `man etiquette`.");
+  };
+
+  A["man"] = function (m) {
+    var page = String(m[1] || "intro").replace(/^-+/, "").toLowerCase();
+    if (!MAN[page]) {
+      err("man: no entry for " + page);
+      out("pages: " + Object.keys(MAN).join(", "), "sys");
+      return;
+    }
+    MAN[page].forEach(function (l) { out(l, "sys"); });
+  };
+
+  A["clear"] = function () { scroll.innerHTML = ""; };
+
+  A["help"] = function () {
+    err("help: command not found");
+    hint("There is a manual. Nobody has read it. Be the first: `man`");
+  };
+
+  /* ======================================================
+     platform-independent patterns
+     ====================================================== */
+
+  var COMMON = [
+    [/^ack\s+(-?\d+)$/i,                                "ack"],
+    [/^close$/i,                                        "close"],
+    [/^auth\s+(\S+)$/i,                                 "auth"],
+    [/^get\s+(\S+)$/i,                                  "get"],
+    [/^post\s+--length\s+(\d+)\s+([\s\S]+)$/i,          "post"],
+    [/^udp\s+(\d+\.\d+\.\d+\.\d+):(\d+)\s+([\s\S]+)$/i, "udp"],
+    [/^base64\s+([\s\S]+)$/i,                           "base64"],
+    [/^wc\s+-c\s+([\s\S]+)$/i,                          "wc"],
+    [/^date\s+-d\s+(\d+)$/i,                            "date"],
+    [/^xxd\s+-r$/i,                                     "xxd"],
+    [/^man(?:\s+(\S+))?$/i,                             "man"],
+    [/^clear$/i,                                        "clear"],
+    [/^help$/i,                                         "help"],
+    [/^delete\b/i,                                      "delete"]
+  ];
+
+  /* nudges for reaching for another platform's spelling */
+  var CROSS = [
+    [/^ip\s+link/i,            "linux",   "ifaceUp"],
+    [/^ip\s+route/i,           "linux",   "routeAdd"],
+    [/^ip\s+addr/i,            "linux",   "ifaceShow"],
+    [/^ip\s+n(eigh)?\b/i,      "linux",   "arp"],
+    [/^dhclient/i,             "linux",   "dhcp"],
+    [/^ss\b/i,                 "linux",   "conns"],
+    [/^ifconfig/i,             "macos",   "ifaceShow"],
+    [/^ipconfig\s+set/i,       "macos",   "dhcp"],
+    [/^netstat\s+-rn?\b/i,     "macos",   "routeShow"],
+    [/^route\s+(-n\s+)?add\s+-net/i, "macos", "routeAdd"],
+    [/^netsh/i,                "windows", "ifaceUp"],
+    [/^ipconfig\s*\//i,        "windows", "dhcp"],
+    [/^nslookup/i,             "windows", "dns"],
+    [/^tracert/i,              "windows", "trace"],
+    [/^route\s+print/i,        "windows", "routeShow"],
+    [/^route\s+add\s+\S+\s+mask/i, "windows", "routeAdd"],
+    [/^Test-NetConnection/i,   "windows", "connect"],
+    [/^dig\b/i,                "linux",   "dns"],
+    [/^traceroute\b/i,         "linux",   "trace"],
+    [/^nc\b/i,                 "linux",   "connect"],
+    [/^arp\s+-a/i,             "macos",   "arp"]
+  ];
+
+  function crossHint(line) {
+    for (var i = 0; i < CROSS.length; i++) {
+      if (CROSS[i][0].test(line) && CROSS[i][1] !== OS.key) {
+        var other = OSES[CROSS[i][1]];
+        hint("That is the " + other.name + " spelling. On " + OS.name + " it is:");
+        hint("    " + OS.ex[CROSS[i][2]]);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /* ======================================================
+     dispatch
+     ====================================================== */
+
+  function dispatch(line) {
+    var i, m;
+    for (i = 0; i < OS.pats.length; i++) {
+      m = line.match(OS.pats[i][0]);
+      if (m) return { fn: OS.pats[i][1], m: m };
+    }
+    for (i = 0; i < COMMON.length; i++) {
+      m = line.match(COMMON[i][0]);
+      if (m) return { fn: COMMON[i][1], m: m };
+    }
+    return null;
+  }
+
+  function run(text) {
+    var line = text.trim();
+    if (!line) return;
+    out(OS.ps1 + " " + line, "tx");
+
+    var hit = dispatch(line);
+    if (!hit) {
+      err(line.split(/\s+/)[0] + ": command not found");
+      if (!crossHint(line)) hint("`man` lists everything that exists on " + OS.name + ".");
+    } else {
+      try { A[hit.fn](hit.m); }
+      catch (e) { err("kernel: unhandled exception in " + hit.fn + " — " + e.message); }
+    }
+    pad();
+    render();
+    toBottom();
+  }
+
+  /* ======================================================
+     input handling
+     ====================================================== */
+
+  var history = [], hIdx = -1;
+
+  function wireInput() {
+    document.getElementById("form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var v = input.value;
+      if (v.trim()) { history.push(v); hIdx = history.length; }
+      input.value = "";
+      run(v);
+    });
+
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (hIdx > 0) { hIdx--; input.value = history[hIdx]; }
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (hIdx < history.length - 1) { hIdx++; input.value = history[hIdx]; }
+        else { hIdx = history.length; input.value = ""; }
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        var w = input.value.trim().split(/\s+/);
+        if (w[0] === "man") {
+          var mh = Object.keys(MAN).filter(function (c) { return c.indexOf((w[1] || "")) === 0; });
+          if (mh.length === 1) input.value = "man " + mh[0];
+          else if (mh.length > 1) { out(OS.ps1 + " " + input.value, "tx"); out(mh.join("  "), "sys"); pad(); toBottom(); }
+        }
+      }
+    });
+
+    document.getElementById("scroll").addEventListener("click", function () {
+      if (!window.getSelection().toString()) input.focus();
+    });
+
+    document.getElementById("drawer").addEventListener("click", function () {
+      document.getElementById("stackpanel").classList.toggle("open");
+    });
+  }
+
+  /* ======================================================
+     chooser
+     ====================================================== */
+
+  var pickedOS = "linux", pickedMode = "guided";
+
+  function paintPreview() {
+    var o = OSES[pickedOS];
+    document.getElementById("preview").innerHTML =
+      esc(o.ps1) + " <b>" + esc(o.ex.ifaceUp) + "</b>";
+  }
+
+  function wireGroup(id, attr, onPick) {
+    var group = document.getElementById(id);
+    group.addEventListener("click", function (e) {
+      var btn = e.target.closest("button[" + attr + "]");
+      if (!btn) return;
+      Array.prototype.forEach.call(group.querySelectorAll("button[" + attr + "]"), function (b) {
+        b.setAttribute("aria-pressed", String(b === btn));
+      });
+      onPick(btn.getAttribute(attr));
+    });
+  }
+
+  wireGroup("os-opts", "data-os", function (v) { pickedOS = v; paintPreview(); });
+  wireGroup("mode-opts", "data-mode", function (v) { pickedMode = v; });
+  paintPreview();
+
+  document.getElementById("launch").addEventListener("click", function () {
+    OS = OSES[pickedOS];
+    OS.key = pickedOS;
+    GUIDED = (pickedMode === "guided");
+    buildMan();
+
+    document.getElementById("chooser").classList.add("gone");
+    var app = document.getElementById("app");
+    app.hidden = false;
+
+    scroll = document.getElementById("scroll");
+    input = document.getElementById("cmd");
+    document.getElementById("ps1").textContent = OS.ps1;
+    document.getElementById("brand-tag").textContent =
+      OS.name + " · " + (GUIDED ? "guided" : "unguided");
+
+    if (!GUIDED) {
+      document.getElementById("mainsplit").classList.add("solo");
+      document.getElementById("stackpanel").hidden = true;
+      document.getElementById("drawer").hidden = true;
+    }
+
+    wireInput();
+    render();
+    boot();
+  });
+
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function boot() {
+    var banner = GUIDED ? [
+      "PACKET  //  " + OS.name + "  //  guided",
+      "",
+      "  " + OS.iface + " is down. You have no address, no name resolution, no",
+      "  route, no connection, no session, and no friends. In that order.",
+      "",
+      "  Everything a normal network hides from you is now your job. The",
+      "  manual is the only concession we make: type `man`.",
+      "",
+      "  First move: " + OS.ex.ifaceUp
+    ] : [
+      "PACKET  //  " + OS.name + "  //  unguided",
+      "",
+      "  " + OS.iface + ": no carrier",
+      "  man(1) is installed."
+    ];
+
+    if (reduce) {
+      banner.forEach(function (b) { out(b, "sys"); });
+      pad(); input.focus(); toBottom();
+      return;
+    }
+    var i = 0;
+    (function step() {
+      if (i >= banner.length) { pad(); input.focus(); toBottom(); return; }
+      out(banner[i], "sys");
+      toBottom();
+      i++;
+      setTimeout(step, 90);
+    })();
+  }
+})();
+</script>
+
+</body></html>
